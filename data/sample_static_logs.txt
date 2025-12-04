@@ -1,0 +1,76 @@
+# Sample Static Log File for PivotProtect Testing
+# Format: Apache Combined Log Format
+# IP - - [timestamp] "METHOD endpoint HTTP/version" status bytes "referrer" "user_agent" response_time
+
+# Normal traffic samples
+192.168.1.100 - - [29/Nov/2025:10:15:30 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/87.0.4280.141" 125
+192.168.1.101 - - [29/Nov/2025:10:15:31 +0530] "GET /usr/login HTTP/1.0" 200 3842 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/84.0" 98
+192.168.1.102 - - [29/Nov/2025:10:15:32 +0530] "POST /usr/register HTTP/1.0" 200 2156 "http://example.com" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) Safari/537.75.14" 234
+192.168.1.100 - - [29/Nov/2025:10:15:35 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/87.0.4280.141" 112
+10.0.0.50 - - [29/Nov/2025:10:16:00 +0530] "GET /usr/admin HTTP/1.0" 200 5120 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edge/89.0.759.0" 145
+10.0.0.51 - - [29/Nov/2025:10:16:05 +0530] "POST /usr/login HTTP/1.0" 200 1024 "-" "Mozilla/5.0 (Linux; Android 10) Chrome/86.0.4240.198" 89
+
+# Suspicious: Multiple failed login attempts from same IP (Brute Force)
+45.33.32.156 - - [29/Nov/2025:10:20:00 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 50
+45.33.32.156 - - [29/Nov/2025:10:20:01 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 48
+45.33.32.156 - - [29/Nov/2025:10:20:02 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 51
+45.33.32.156 - - [29/Nov/2025:10:20:03 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 49
+45.33.32.156 - - [29/Nov/2025:10:20:04 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 52
+45.33.32.156 - - [29/Nov/2025:10:20:05 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 47
+45.33.32.156 - - [29/Nov/2025:10:20:06 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 53
+45.33.32.156 - - [29/Nov/2025:10:20:07 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 50
+45.33.32.156 - - [29/Nov/2025:10:20:08 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 48
+45.33.32.156 - - [29/Nov/2025:10:20:09 +0530] "POST /usr/login HTTP/1.0" 401 512 "-" "Mozilla/5.0 (Windows NT 10.0) Chrome/87.0" 51
+
+# Suspicious: SQL Injection attempts
+185.220.101.34 - - [29/Nov/2025:10:25:00 +0530] "GET /usr/login?id=1'OR'1'='1 HTTP/1.0" 400 256 "-" "sqlmap/1.4" 35
+185.220.101.34 - - [29/Nov/2025:10:25:01 +0530] "GET /usr/login?id=1;DROP%20TABLE%20users HTTP/1.0" 400 256 "-" "sqlmap/1.4" 32
+185.220.101.34 - - [29/Nov/2025:10:25:02 +0530] "POST /usr/register HTTP/1.0" 400 256 "-" "sqlmap/1.4" 38
+185.220.101.34 - - [29/Nov/2025:10:25:03 +0530] "GET /usr?query=UNION%20SELECT%20*%20FROM%20users HTTP/1.0" 400 256 "-" "sqlmap/1.4" 40
+
+# Suspicious: Path Traversal attempts
+103.75.190.11 - - [29/Nov/2025:10:30:00 +0530] "GET /usr/../../../etc/passwd HTTP/1.0" 403 128 "-" "curl/7.68.0" 25
+103.75.190.11 - - [29/Nov/2025:10:30:01 +0530] "GET /usr/admin/../../etc/shadow HTTP/1.0" 403 128 "-" "curl/7.68.0" 22
+103.75.190.11 - - [29/Nov/2025:10:30:02 +0530] "GET /%2e%2e/%2e%2e/etc/passwd HTTP/1.0" 403 128 "-" "curl/7.68.0" 28
+
+# Suspicious: XSS attempts
+91.121.87.42 - - [29/Nov/2025:10:35:00 +0530] "GET /usr?name=<script>alert('xss')</script> HTTP/1.0" 400 256 "-" "Mozilla/5.0" 30
+91.121.87.42 - - [29/Nov/2025:10:35:01 +0530] "POST /usr/register HTTP/1.0" 400 256 "-" "Mozilla/5.0" 28
+91.121.87.42 - - [29/Nov/2025:10:35:02 +0530] "GET /usr?redirect=javascript:alert(1) HTTP/1.0" 400 256 "-" "Mozilla/5.0" 32
+
+# Suspicious: Port Scanning behavior (rapid requests to multiple endpoints)
+172.16.0.200 - - [29/Nov/2025:10:40:00 +0530] "GET /usr HTTP/1.0" 200 1024 "-" "Nmap/7.80" 15
+172.16.0.200 - - [29/Nov/2025:10:40:00 +0530] "GET /usr/admin HTTP/1.0" 403 512 "-" "Nmap/7.80" 12
+172.16.0.200 - - [29/Nov/2025:10:40:00 +0530] "GET /usr/login HTTP/1.0" 200 1024 "-" "Nmap/7.80" 14
+172.16.0.200 - - [29/Nov/2025:10:40:00 +0530] "GET /usr/register HTTP/1.0" 200 1024 "-" "Nmap/7.80" 13
+172.16.0.200 - - [29/Nov/2025:10:40:01 +0530] "GET /usr/admin/developer HTTP/1.0" 403 512 "-" "Nmap/7.80" 16
+172.16.0.200 - - [29/Nov/2025:10:40:01 +0530] "GET /api HTTP/1.0" 404 256 "-" "Nmap/7.80" 11
+172.16.0.200 - - [29/Nov/2025:10:40:01 +0530] "GET /admin HTTP/1.0" 404 256 "-" "Nmap/7.80" 10
+172.16.0.200 - - [29/Nov/2025:10:40:01 +0530] "GET /config HTTP/1.0" 404 256 "-" "Nmap/7.80" 12
+172.16.0.200 - - [29/Nov/2025:10:40:01 +0530] "GET /backup HTTP/1.0" 404 256 "-" "Nmap/7.80" 11
+172.16.0.200 - - [29/Nov/2025:10:40:02 +0530] "GET /.git HTTP/1.0" 404 256 "-" "Nmap/7.80" 13
+
+# Suspicious: DDoS-like behavior (high frequency from multiple IPs)
+200.100.50.1 - - [29/Nov/2025:10:45:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0" 500
+200.100.50.2 - - [29/Nov/2025:10:45:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0" 520
+200.100.50.3 - - [29/Nov/2025:10:45:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0" 510
+200.100.50.4 - - [29/Nov/2025:10:45:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0" 530
+200.100.50.5 - - [29/Nov/2025:10:45:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0" 515
+200.100.50.6 - - [29/Nov/2025:10:45:01 +0530] "GET /usr HTTP/1.0" 503 256 "-" "Mozilla/5.0" 1000
+200.100.50.7 - - [29/Nov/2025:10:45:01 +0530] "GET /usr HTTP/1.0" 503 256 "-" "Mozilla/5.0" 1200
+200.100.50.8 - - [29/Nov/2025:10:45:01 +0530] "GET /usr HTTP/1.0" 503 256 "-" "Mozilla/5.0" 1100
+
+# Normal traffic continued
+192.168.1.103 - - [29/Nov/2025:10:50:00 +0530] "GET /usr/login HTTP/1.0" 200 3842 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/84.0" 102
+192.168.1.104 - - [29/Nov/2025:10:50:05 +0530] "POST /usr/register HTTP/1.0" 200 2156 "http://example.com" "Mozilla/5.0 Chrome/87.0" 198
+192.168.1.100 - - [29/Nov/2025:10:50:10 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/87.0.4280.141" 115
+
+# Suspicious: Admin access from unknown IP at odd hours
+88.77.66.55 - - [29/Nov/2025:03:15:00 +0530] "GET /usr/admin HTTP/1.0" 200 5120 "-" "Mozilla/5.0" 145
+88.77.66.55 - - [29/Nov/2025:03:15:05 +0530] "GET /usr/admin/developer HTTP/1.0" 200 4096 "-" "Mozilla/5.0" 132
+88.77.66.55 - - [29/Nov/2025:03:15:10 +0530] "DELETE /usr/admin HTTP/1.0" 200 1024 "-" "Mozilla/5.0" 98
+
+# More normal traffic
+10.0.0.52 - - [29/Nov/2025:11:00:00 +0530] "GET /usr HTTP/1.0" 200 4521 "-" "Mozilla/5.0 (iPhone; CPU iPhone OS 12_4_9) Safari/604.1" 156
+10.0.0.53 - - [29/Nov/2025:11:00:05 +0530] "POST /usr/login HTTP/1.0" 200 1024 "-" "Mozilla/5.0 (Android 10) Chrome/87.0" 87
+192.168.1.105 - - [29/Nov/2025:11:00:10 +0530] "GET /usr/register HTTP/1.0" 200 2048 "-" "Mozilla/5.0 (Windows NT 10.0) Edge/89.0" 134
