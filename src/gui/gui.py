@@ -1,110 +1,111 @@
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk
+import sys
+import os
+import time
+import threading
+
+# Add parent directory (src) to path for relative imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.feature_extractor import FeatureExtractor
+from core.detection_engine import DetectionEngine
+from core.alert_manager import AlertManager
+from core.ml_model_loader import MLModelLoader
 
 class IDPSGUI:
-    def __init__(self, root):
+    def __init__(self, root, demo_mode=False):
         self.root = root
-        self.root.title("Pivot Protect")
-        self.root.geometry("500x450")
-        self.root.configure(bg="#f5f5f5")
+        self.root.title("PivotProtect Dashboard")
+        self.root.geometry("800x500")
 
-        ttk.Label(root, text="Pivot Protect",
-                  font=("Arial", 14, "bold")).pack(pady=10)
-        ttk.Label(root, text="Intrusion Detection & Prevention System",
-                  font=("Arial", 14, "bold")).pack(pady=10)
+        self.demo_mode = demo_mode
 
-        # Mode Selection
-        mode_frame = ttk.Frame(root)
-        mode_frame.pack(pady=5)
+        # Initialize Core Engine
+        self.feature_extractor = FeatureExtractor()
+        ml_loader = MLModelLoader("models/ml_model.pkl")
+        self.detection_engine = DetectionEngine(ml_model=ml_loader)
+        self.alert_manager = AlertManager(max_history=200)
 
-        ttk.Label(mode_frame, text="Mode:").grid(row=0, column=0, padx=5)
-        self.mode_var = tk.StringVar(value="Static")
+        # GUI Components
+        dashboard_frame = tk.Frame(root)
+        dashboard_frame.pack(side='top', fill='x', padx=10, pady=5)
 
-        mode_menu = ttk.Combobox(
-            mode_frame,
-            textvariable=self.mode_var,
-            values=["Static", "Live"],
-            width=15,
-            state="readonly"
-        )
-        mode_menu.grid(row=0, column=1)
-        mode_menu.bind("<<ComboboxSelected>>", self.update_mode)
+        tk.Label(dashboard_frame, text="Packets Processed:").grid(row=0, column=0, sticky='w')
+        self.packet_count_label = tk.Label(dashboard_frame, text="0")
+        self.packet_count_label.grid(row=0, column=1, sticky='w')
 
-        # File picker frame
-        self.file_frame = ttk.Frame(root)
-        self.file_frame.pack(pady=5)
+        tk.Label(dashboard_frame, text="Unique IPs:").grid(row=1, column=0, sticky='w')
+        self.unique_ip_label = tk.Label(dashboard_frame, text="0")
+        self.unique_ip_label.grid(row=1, column=1, sticky='w')
 
-        self.file_label = ttk.Label(self.file_frame, text="No file selected")
-        self.file_label.pack(side="left", padx=5)
+        alerts_frame = tk.Frame(root)
+        alerts_frame.pack(side='top', fill='both', expand=True, padx=10, pady=5)
 
-        self.browse_btn = ttk.Button(self.file_frame, text="Browse",
-                                     command=self.pick_file)
-        self.browse_btn.pack(side="right", padx=5)
+        tk.Label(alerts_frame, text="Live Alerts").pack()
+        self.alerts_tree = ttk.Treeview(alerts_frame, columns=("Time","Severity","Type","IP","Detail"), show='headings')
+        self.alerts_tree.pack(fill='both', expand=True)
 
-        # Buttons
-        btn_frame = ttk.Frame(root)
-        btn_frame.pack(pady=10)
+        for col in ("Time","Severity","Type","IP","Detail"):
+            self.alerts_tree.heading(col, text=col)
+            self.alerts_tree.column(col, width=120)
 
-        ttk.Button(btn_frame, text="Start Scan",
-                   command=self.start_scan).grid(row=0, column=0, padx=10)
+        # Packet queue (live or demo)
+        self.live_packet_queue = []
 
-        ttk.Button(btn_frame, text="Stop",
-                   command=self.stop_scan).grid(row=0, column=1, padx=10)
+        # If demo_mode → load simulated packets
+        if self.demo_mode:
+            self.load_demo_packets()
 
-        # Status
-        self.status_var = tk.StringVar(value="Idle")
-        ttk.Label(root, text="Status:").pack()
-        self.status_label = ttk.Label(root, textvariable=self.status_var,
-                                      foreground="gray")
-        self.status_label.pack()
+        # Start GUI refresh loop
+        threading.Thread(target=self.refresh_loop, daemon=True).start()
 
-        # Logs
-        ttk.Label(root, text="Alerts / Logs:").pack(pady=5)
-        self.log_box = tk.Text(root, height=12, width=55)
-        self.log_box.pack()
+    # DEMO PACKETS FOR OFFLINE MODE
+    def load_demo_packets(self):
+        import time
+        self.live_packet_queue.extend([
+            {"src_ip": "192.168.1.2", "dst_ip": "10.0.0.1", "dst_port": 22,
+             "protocol": "TCP", "size": 450, "timestamp": time.time()},
+            {"src_ip": "192.168.1.2", "dst_ip": "10.0.0.1", "dst_port": 23,
+             "protocol": "TCP", "size": 460, "timestamp": time.time() + 0.5},
+            {"src_ip": "192.168.1.5", "dst_ip": "10.0.0.1", "dst_port": 80,
+             "protocol": "TCP", "size": 900, "timestamp": time.time() + 1.0},
+        ])
 
-    # Functions
+    # CORE PROCESSING
+    def process_packet(self, packet):
+        features = self.feature_extractor.extract_from_packet(packet)
+        alerts = self.detection_engine.analyze_packet_features(features)
 
-    def update_mode(self, event=None):
-        """Enable only in Static mode, grey out in Live."""
-        if self.mode_var.get() == "Static":
-            self.browse_btn.state(["!disabled"])  # enable
-        else:
-            self.browse_btn.state(["disabled"])   # disable (greyscale)
+        for alert in alerts:
+            self.alert_manager.add_alert(
+                alert_type=alert["type"],
+                severity=alert["severity"],
+                detail=alert["detail"],
+                source_ip=alert.get("ip")
+            )
 
-    def pick_file(self):
-        file_path = filedialog.askopenfilename()
-        if file_path:
-            self.file_label.config(text=file_path)
+    # UPDATE GUI VIEW
+    def update_alerts_view(self):
+        for row in self.alerts_tree.get_children():
+            self.alerts_tree.delete(row)
 
-    def start_scan(self):
-        mode = self.mode_var.get()
-        self.status_var.set("Running...")
-        self.status_label.config(foreground="green")
+        for a in self.alert_manager.get_history():
+            self.alerts_tree.insert("", "end", values=(
+                a["timestamp"], a["severity"], a["type"], a["ip"], a["detail"]
+            ))
 
-        if mode == "Static":
-            self.log("Running static analysis...")
-        else:
-            self.log("Starting live packet capture...")
+        self.packet_count_label.config(text=str(len(self.feature_extractor.time_window)))
+        self.unique_ip_label.config(text=str(len(self.detection_engine.packet_count_per_ip)))
 
-        self.show_alert("Suspicious activity detected on port 23")
+    # MAIN LOOP
+    def refresh_loop(self):
+        while True:
+            # Process queued packets
+            for packet in self.live_packet_queue:
+                self.process_packet(packet)
+            self.live_packet_queue.clear()
 
-    def stop_scan(self):
-        self.status_var.set("Idle")
-        self.status_label.config(foreground="gray")
-        self.log("Scan stopped.")
-
-    def show_alert(self, msg):
-        messagebox.showwarning("Threat Detected", msg)
-        self.log(f"[ALERT] {msg}")
-
-    def log(self, text):
-        self.log_box.insert(tk.END, text + "\n")
-        self.log_box.see(tk.END)
-
-
-# Run GUI 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = IDPSGUI(root)
-    root.mainloop()
+            # Refresh GUI
+            self.update_alerts_view()
+            time.sleep(0.5)

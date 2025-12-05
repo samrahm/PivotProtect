@@ -3,3 +3,4 @@ scapy
 pandas
 joblib
 numpy
+faker
