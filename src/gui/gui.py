@@ -33,6 +33,9 @@ class IDPSGUI:
 
         # Packet queue
         self.live_packet_queue = []
+        
+        # Pause flag
+        self.is_paused = False
 
         # Menu
         menubar = tk.Menu(root)
@@ -41,6 +44,12 @@ class IDPSGUI:
         menubar.add_cascade(label="Mode", menu=mode_menu)
         mode_menu.add_command(label="Live", command=self.start_live_mode)
         mode_menu.add_command(label="Static", command=self.start_static_mode)
+        
+        # Control menu
+        control_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Control", menu=control_menu)
+        control_menu.add_command(label="Pause", command=self.toggle_pause)
+        control_menu.add_command(label="Clear Alerts", command=self.clear_alerts)
 
         # Dashboard frame
         dashboard_frame = tk.Frame(root)
@@ -53,17 +62,52 @@ class IDPSGUI:
         tk.Label(dashboard_frame, text="Unique IPs:").grid(row=1, column=0, sticky='w')
         self.unique_ip_label = tk.Label(dashboard_frame, text="0")
         self.unique_ip_label.grid(row=1, column=1, sticky='w')
+        
+        # Pause/Resume button
+        self.pause_button = tk.Button(dashboard_frame, text="⏸ Pause", command=self.toggle_pause, 
+                                       bg="orange", fg="white", padx=10)
+        self.pause_button.grid(row=0, column=2, padx=10)
+        
+        # Clear alerts button
+        self.clear_button = tk.Button(dashboard_frame, text="Clear", command=self.clear_alerts,
+                                       bg="red", fg="white", padx=10)
+        self.clear_button.grid(row=1, column=2, padx=10)
+        
+        # Status label
+        self.status_label = tk.Label(dashboard_frame, text="Status: Running", fg="green")
+        self.status_label.grid(row=0, column=3, padx=20)
 
-        # Alerts frame
+        # Alerts frame with color mapping
         alerts_frame = tk.Frame(root)
         alerts_frame.pack(side='top', fill='both', expand=True, padx=10, pady=5)
-        tk.Label(alerts_frame, text="Live Alerts").pack()
-        self.alerts_tree = ttk.Treeview(alerts_frame,
-            columns=("Time","Severity","Type","IP","Detail"), show='headings')
+        tk.Label(alerts_frame, text="Live Alerts (Color-coded by Severity)", font=("Arial", 10, "bold")).pack()
+        
+        # Create a frame for the treeview
+        tree_frame = tk.Frame(alerts_frame)
+        tree_frame.pack(fill='both', expand=True)
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(tree_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.alerts_tree = ttk.Treeview(tree_frame,
+            columns=("●", "Time", "Severity", "Type", "IP", "Detail"), show='headings', yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.alerts_tree.yview)
         self.alerts_tree.pack(fill='both', expand=True)
-        for col in ("Time","Severity","Type","IP","Detail"):
+        
+        # Configure columns with indicator column
+        self.alerts_tree.heading("●", text="")
+        self.alerts_tree.column("●", width=20)
+        
+        for col in ("Time", "Severity", "Type", "IP", "Detail"):
             self.alerts_tree.heading(col, text=col)
-            self.alerts_tree.column(col, width=120)
+            self.alerts_tree.column(col, width=100)
+        
+        # Configure tag colors for severity levels
+        self.alerts_tree.tag_configure("critical", foreground="white", background="#d32f2f")  # Red
+        self.alerts_tree.tag_configure("high", foreground="white", background="#f57c00")      # Orange
+        self.alerts_tree.tag_configure("medium", foreground="white", background="#fbc02d")    # Yellow
+        self.alerts_tree.tag_configure("low", foreground="black", background="#4caf50")       # Green
 
         # Load demo packets if requested
         if self.demo_mode:
@@ -71,6 +115,23 @@ class IDPSGUI:
 
         # Start GUI refresh loop
         threading.Thread(target=self.refresh_loop, daemon=True).start()
+
+    # ---------------- Control Methods ----------------
+    def toggle_pause(self):
+        """Toggle between pause and resume"""
+        self.is_paused = not self.is_paused
+        if self.is_paused:
+            self.pause_button.config(text="▶ Resume", bg="green")
+            self.status_label.config(text="Status: Paused", fg="red")
+        else:
+            self.pause_button.config(text="⏸ Pause", bg="orange")
+            self.status_label.config(text="Status: Running", fg="green")
+    
+    def clear_alerts(self):
+        """Clear all alerts from the display"""
+        self.alert_manager.alert_history.clear()
+        self.alert_manager.alert_cache.clear()
+        messagebox.showinfo("Cleared", "All alerts have been cleared")
 
     # ---------------- Demo / Static ----------------
     def load_demo_packets(self):
@@ -150,18 +211,40 @@ class IDPSGUI:
     def update_alerts_view(self):
         for row in self.alerts_tree.get_children():
             self.alerts_tree.delete(row)
+        
+        # Color mapping for severity
+        severity_colors = {
+            "critical": ("critical", "🔴"),
+            "high": ("high", "🟠"),
+            "medium": ("medium", "🟡"),
+            "low": ("low", "🟢")
+        }
+        
         for a in self.alert_manager.get_history():
+            severity = a["severity"].lower()
+            tag, indicator = severity_colors.get(severity, ("low", "⭕"))
+            
             self.alerts_tree.insert("", "end", values=(
-                a["timestamp"], a["severity"], a["type"], a["ip"], a["detail"]
-            ))
+                indicator,
+                a["timestamp"],
+                a["severity"],
+                a["type"],
+                a["ip"],
+                a["detail"]
+            ), tags=(tag,))
+        
         self.packet_count_label.config(text=str(len(self.feature_extractor.time_window)))
         self.unique_ip_label.config(text=str(len(self.detection_engine.packet_count_per_ip)))
 
     def refresh_loop(self):
         while True:
-            for packet in self.live_packet_queue:
-                self.process_packet(packet)
-            self.live_packet_queue.clear()
+            # Only process packets if not paused
+            if not self.is_paused:
+                for packet in self.live_packet_queue:
+                    self.process_packet(packet)
+                self.live_packet_queue.clear()
+            
+            # Always update the display
             self.update_alerts_view()
             time.sleep(0.5)
 
