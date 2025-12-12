@@ -109,6 +109,9 @@ class IDPSGUI:
         self.alerts_tree.tag_configure("medium", foreground="white", background="#fbc02d")    # Yellow
         self.alerts_tree.tag_configure("low", foreground="black", background="#4caf50")       # Green
 
+        # Bind selection to show origin details
+        self.alerts_tree.bind("<<TreeviewSelect>>", self.on_alert_select)
+
         # Load demo packets if requested
         if self.demo_mode:
             self.load_demo_packets()
@@ -129,9 +132,53 @@ class IDPSGUI:
     
     def clear_alerts(self):
         """Clear all alerts from the display"""
+        # Clear alert manager storage
         self.alert_manager.alert_history.clear()
         self.alert_manager.alert_cache.clear()
-        messagebox.showinfo("Cleared", "All alerts have been cleared")
+        self.alert_manager.current_alerts.clear()
+
+        # Clear GUI tree view
+        for item in self.alerts_tree.get_children():
+            self.alerts_tree.delete(item)
+
+        # Clear live packet queue
+        try:
+            self.live_packet_queue.clear()
+        except Exception:
+            self.live_packet_queue = []
+
+        # Reset feature extractor internal state
+        try:
+            fe = self.feature_extractor
+            fe.packet_count_per_ip.clear()
+            fe.bytes_per_flow.clear()
+            fe.unique_ports_per_ip.clear()
+            fe.time_window.clear()
+            fe.last_timestamp = None
+        except Exception:
+            pass
+
+        # Reset detection engine internal state
+        try:
+            de = self.detection_engine
+            de.packet_count_per_ip.clear()
+            de.ports_per_ip.clear()
+            de.failed_logins.clear()
+            de.time_window.clear()
+            de.alerts.clear()
+        except Exception:
+            pass
+
+        # Reset dashboard counters
+        self.packet_count_label.config(text="0")
+        self.unique_ip_label.config(text="0")
+
+        # Ensure scanner is running (unpause) after clear
+        self.is_paused = False
+        self.pause_button.config(text="⏸ Pause", bg="orange")
+        self.status_label.config(text="Status: Running", fg="green")
+
+        messagebox.showinfo("Cleared", "All alerts cleared and scanner restarted")
 
     # ---------------- Demo / Static ----------------
     def load_demo_packets(self):
@@ -140,6 +187,8 @@ class IDPSGUI:
              "protocol": "TCP", "size": 450, "timestamp": time.time()},
             {"src_ip": "192.168.1.2", "dst_ip": "10.0.0.1", "dst_port": 23,
              "protocol": "TCP", "size": 460, "timestamp": time.time() + 0.5},
+            {"src_ip": "192.168.1.5", "dst_ip": "10.0.0.1", "dst_port": 80,
+             "protocol": "TCP", "size": 900, "timestamp": time.time() + 1.0},
         ])
 
     def start_static_mode(self):
@@ -235,6 +284,56 @@ class IDPSGUI:
         
         self.packet_count_label.config(text=str(len(self.feature_extractor.time_window)))
         self.unique_ip_label.config(text=str(len(self.detection_engine.packet_count_per_ip)))
+
+    def on_alert_select(self, event):
+        """Show details about where an alert originated from when clicked."""
+        sel = self.alerts_tree.selection()
+        if not sel:
+            return
+        item = sel[0]
+        values = self.alerts_tree.item(item, "values")
+        # values: (indicator, timestamp, severity, type, ip, detail)
+        try:
+            ip = values[4]
+        except Exception:
+            ip = None
+
+        origin_lines = []
+        origin_lines.append(f"Alert: {values[3]}\nSeverity: {values[2]}\nDetail: {values[5]}")
+
+        if ip and ip != 'None':
+            origin_lines.append(f"Source IP: {ip}")
+            # Packet counts
+            try:
+                pc = self.detection_engine.packet_count_per_ip.get(ip, 0)
+                origin_lines.append(f"Packets seen from IP: {pc}")
+            except Exception:
+                pass
+
+            # Unique ports seen
+            try:
+                ports = None
+                # Prefer detection_engine ports_per_ip, fallback to feature_extractor
+                if hasattr(self.detection_engine, 'ports_per_ip'):
+                    ports = list(self.detection_engine.ports_per_ip.get(ip, []))
+                if not ports:
+                    ports = list(self.feature_extractor.unique_ports_per_ip.get(ip, []))
+                origin_lines.append(f"Observed ports: {ports}")
+            except Exception:
+                pass
+
+            # Flow bytes summary (best-effort)
+            try:
+                flows = []
+                for (s, d), b in self.feature_extractor.bytes_per_flow.items():
+                    if s == ip:
+                        flows.append(f"to {d}: {b} bytes")
+                if flows:
+                    origin_lines.append("Flow bytes:\n  " + "\n  ".join(flows))
+            except Exception:
+                pass
+
+        messagebox.showinfo("Alert Origin", "\n\n".join(origin_lines))
 
     def refresh_loop(self):
         while True:
