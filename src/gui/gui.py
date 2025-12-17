@@ -37,6 +37,11 @@ class IDPSGUI:
         # Pause flag
         self.is_paused = False
 
+        # Mode tracking
+        self.current_mode = "demo" if demo_mode else "none"
+        self.live_capture_running = False
+        self.live_stop_event = threading.Event()
+
         # Menu
         menubar = tk.Menu(root)
         root.config(menu=menubar)
@@ -192,6 +197,14 @@ class IDPSGUI:
         ])
 
     def start_static_mode(self):
+        # Stop live capture if running
+        if self.live_capture_running:
+            self.live_stop_event.set()
+            self.live_capture_running = False
+        
+        self.current_mode = "static"
+        self.live_packet_queue.clear()  # Clear any previous packets
+        
         file_path = filedialog.askopenfilename(
             title="Select static packet file",
             filetypes=[("CSV files","*.csv"),("JSON files","*.json"),("All files","*.*")]
@@ -230,7 +243,18 @@ class IDPSGUI:
             messagebox.showerror("Error", "Scapy not installed, cannot run live capture")
             return
 
+        # Stop any previous live capture
+        if self.live_capture_running:
+            self.live_stop_event.set()
+        
+        self.live_capture_running = True
+        self.current_mode = "live"
+        self.live_packet_queue.clear()  # Clear any previous packets
+        self.live_stop_event.clear()
+
         def capture(packet):
+            if self.live_stop_event.is_set():
+                return
             if packet.haslayer(IP) and packet.haslayer(TCP):
                 pkt_dict = {
                     "src_ip": packet[IP].src,
@@ -242,7 +266,7 @@ class IDPSGUI:
                 }
                 self.live_packet_queue.append(pkt_dict)
 
-        threading.Thread(target=lambda: sniff(prn=capture, store=False), daemon=True).start()
+        threading.Thread(target=lambda: sniff(prn=capture, store=False, stop_filter=lambda x: self.live_stop_event.is_set()), daemon=True).start()
         messagebox.showinfo("Live Mode", "Live capture started")
 
     # ---------------- Core processing ----------------
