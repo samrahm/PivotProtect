@@ -1,11 +1,12 @@
+from static_analysis.dsa_structures import HashMap
+
+
 class PortTracker:
     def __init__(self):
-        self.port_count = {}  # DS: HashMap
+        self.port_count = HashMap()  # Custom HashMap implementation
 
     def record_port(self, port):
-        if port not in self.port_count:
-            self.port_count[port] = 0
-        self.port_count[port] += 1
+        self.port_count.increment(port)
 
     def is_suspicious(self, port, threshold=100):
-        return self.port_count.get(port, 0) > threshold
+        return (self.port_count.get(port) or 0) > threshold

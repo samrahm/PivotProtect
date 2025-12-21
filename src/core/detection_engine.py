@@ -119,6 +119,9 @@ class DetectionEngine:
                 f["time_delta"]
             ]])
             
+            # Debug: Show ML is working
+            print(f"[ML] Analyzed {ip}: unique_ports={f['unique_ports']}, packet_count={f['packet_count_ip']}, prediction={prediction[0]}")
+            
             if prediction[0] == 1:
                 self.alerts.append({
                     "type": "ML_ANOMALY",
@@ -126,6 +129,7 @@ class DetectionEngine:
                     "severity": "high",
                     "detail": "Machine learning model flagged anomaly"
                 })
+                print(f"[ML] ⚠️  ANOMALY DETECTED from {ip}")
 
         return self.alerts
 

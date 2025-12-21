@@ -37,11 +37,6 @@ class IDPSGUI:
         # Pause flag
         self.is_paused = False
 
-        # Mode tracking
-        self.current_mode = "demo" if demo_mode else "none"
-        self.live_capture_running = False
-        self.live_stop_event = threading.Event()
-
         # Menu
         menubar = tk.Menu(root)
         root.config(menu=menubar)
@@ -197,20 +192,16 @@ class IDPSGUI:
         ])
 
     def start_static_mode(self):
-        # Stop live capture if running
-        if self.live_capture_running:
-            self.live_stop_event.set()
-            self.live_capture_running = False
-        
-        self.current_mode = "static"
-        self.live_packet_queue.clear()  # Clear any previous packets
-        
         file_path = filedialog.askopenfilename(
             title="Select static packet file",
             filetypes=[("CSV files","*.csv"),("JSON files","*.json"),("All files","*.*")]
         )
         if not file_path:
             return
+        
+        # Clear all previous alerts and packets before loading static data
+        self.clear_alerts_silent()
+        
         import csv, json
         packets = []
         if file_path.endswith(".csv"):
@@ -235,7 +226,50 @@ class IDPSGUI:
             return
 
         self.live_packet_queue.extend(packets)
-        messagebox.showinfo("Static Mode", f"Loaded {len(packets)} packets for static processing")
+        messagebox.showinfo("Static Mode", f"Loaded {len(packets)} packets for static analysis (previous alerts cleared)")
+    
+    def clear_alerts_silent(self):
+        """Clear all alerts without showing messagebox - used when switching modes"""
+        # Clear alert manager storage
+        self.alert_manager.alert_history.clear()
+        self.alert_manager.alert_cache.clear()
+        self.alert_manager.current_alerts.clear()
+
+        # Clear GUI tree view
+        for item in self.alerts_tree.get_children():
+            self.alerts_tree.delete(item)
+
+        # Clear live packet queue
+        try:
+            self.live_packet_queue.clear()
+        except Exception:
+            self.live_packet_queue = []
+
+        # Reset feature extractor internal state
+        try:
+            fe = self.feature_extractor
+            fe.packet_count_per_ip.clear()
+            fe.bytes_per_flow.clear()
+            fe.unique_ports_per_ip.clear()
+            fe.time_window.clear()
+            fe.last_timestamp = None
+        except Exception:
+            pass
+
+        # Reset detection engine internal state
+        try:
+            de = self.detection_engine
+            de.packet_count_per_ip.clear()
+            de.ports_per_ip.clear()
+            de.failed_logins.clear()
+            de.time_window.clear()
+            de.alerts.clear()
+        except Exception:
+            pass
+
+        # Reset dashboard counters
+        self.packet_count_label.config(text="0")
+        self.unique_ip_label.config(text="0")
 
     # ---------------- Live capture ----------------
     def start_live_mode(self):
@@ -243,18 +277,10 @@ class IDPSGUI:
             messagebox.showerror("Error", "Scapy not installed, cannot run live capture")
             return
 
-        # Stop any previous live capture
-        if self.live_capture_running:
-            self.live_stop_event.set()
-        
-        self.live_capture_running = True
-        self.current_mode = "live"
-        self.live_packet_queue.clear()  # Clear any previous packets
-        self.live_stop_event.clear()
+        # Clear all previous alerts and packets before starting live capture
+        self.clear_alerts_silent()
 
         def capture(packet):
-            if self.live_stop_event.is_set():
-                return
             if packet.haslayer(IP) and packet.haslayer(TCP):
                 pkt_dict = {
                     "src_ip": packet[IP].src,
@@ -266,8 +292,8 @@ class IDPSGUI:
                 }
                 self.live_packet_queue.append(pkt_dict)
 
-        threading.Thread(target=lambda: sniff(prn=capture, store=False, stop_filter=lambda x: self.live_stop_event.is_set()), daemon=True).start()
-        messagebox.showinfo("Live Mode", "Live capture started")
+        threading.Thread(target=lambda: sniff(prn=capture, store=False), daemon=True).start()
+        messagebox.showinfo("Live Mode", "Live capture started (previous alerts cleared)")
 
     # ---------------- Core processing ----------------
     def process_packet(self, packet):

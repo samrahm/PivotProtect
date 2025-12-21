@@ -6,7 +6,7 @@ Parses Apache Combined Log Format and extracts structured data.
 import re
 from typing import List, Dict, Optional
 from datetime import datetime
-
+from .dsa_structures import HashMap
 
 class LogEntry:
     """Represents a single parsed log entry"""
@@ -167,28 +167,28 @@ class LogParser:
         if not self.entries:
             return {}
         
-        # Count by status code
-        status_counts = {}
+        # Count by status code (using custom HashMap)
+        status_counts = HashMap()
         for entry in self.entries:
-            status_counts[entry.status] = status_counts.get(entry.status, 0) + 1
+            status_counts.increment(entry.status)
         
-        # Count by method
-        method_counts = {}
+        # Count by method (using custom HashMap)
+        method_counts = HashMap()
         for entry in self.entries:
-            method_counts[entry.method] = method_counts.get(entry.method, 0) + 1
+            method_counts.increment(entry.method)
         
-        # Count by IP
-        ip_counts = {}
+        # Count by IP (using custom HashMap)
+        ip_counts = HashMap()
         for entry in self.entries:
-            ip_counts[entry.ip] = ip_counts.get(entry.ip, 0) + 1
+            ip_counts.increment(entry.ip)
         
         return {
             'total_entries': len(self.entries),
-            'unique_ips': len(set(entry.ip for entry in self.entries)),
+            'unique_ips': len(ip_counts.keys()),
             'unique_endpoints': len(set(entry.endpoint for entry in self.entries)),
-            'status_distribution': status_counts,
-            'method_distribution': method_counts,
-            'top_ips': sorted(ip_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            'status_distribution': dict(status_counts.items()),
+            'method_distribution': dict(method_counts.items()),
+            'top_ips': ip_counts.get_top_n(10)
         }
 
 
